@@ -89,11 +89,12 @@ class PhoneNumberPickerHandler: PickerHandler {
     @available(iOS 9.0, *)
     public func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
         guard contactProperty.key == CNContactPhoneNumbersKey,
-              let phoneNumber = contactProperty.value as? CNPhoneNumber,
-              let contact = contactProperty.contact else {
+              let phoneNumber = contactProperty.value as? CNPhoneNumber else {
             result(FlutterError(code: "invalid_selection", message: "Selected property is not a phone number", details: nil))
             return
         }
+        
+        let contact = contactProperty.contact
         
         let fullName = CNContactFormatter.string(from: contact, style: .fullName)
         let allNumbers = contact.phoneNumbers.compactMap { $0.value.stringValue }
@@ -104,6 +105,7 @@ class PhoneNumberPickerHandler: PickerHandler {
             "selectedPhoneNumber": selectedNumber,
             "phoneNumbers": allNumbers
         ]
+        
         result(resultData)
     }
 }
