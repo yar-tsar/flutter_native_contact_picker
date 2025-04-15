@@ -12,43 +12,39 @@ public class FlutterNativeContactPickerPlugin: NSObject, FlutterPlugin {
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    if call.method == "selectContact" || call.method == "selectContacts" || call.method == "selectPhoneNumber" {
-        if _delegate != nil {
-            _delegate!.result(FlutterError(code: "multiple_requests", message: "Cancelled by a second request.", details: nil))
-            _delegate = nil
+    if("selectContact" == call.method || "selectContacts" == call.method || "selectPhoneNumber" == call.method) {
+        if(_delegate != nil) {
+            _delegate!.result(FlutterError(code: "multiple_requests", message: "Cancelled by a second request.", details: nil));
+            _delegate = nil;
         }
 
         if #available(iOS 9.0, *) {
-            let isSelectContact = call.method == "selectContact"
-            let isSelectPhoneNumber = call.method == "selectPhoneNumber"
-            let isMultiSelect = call.method == "selectContacts"
+            let single = call.method == "selectContact"
+            let phoneNumberSelection = call.method == "selectPhoneNumber"
             
-            let contactPicker = CNContactPickerViewController()
-            
-            if isSelectContact || isSelectPhoneNumber {
+            if phoneNumberSelection {
                 _delegate = PhoneNumberPickerHandler(result: result)
-                contactPicker.displayedPropertyKeys = [CNContactPhoneNumbersKey]
-            } else if isMultiSelect {
-                _delegate = MultiPickerHandler(result: result)
-                contactPicker.displayedPropertyKeys = nil
+            } else {
+                _delegate = single ? SinglePickerHandler(result: result) : MultiPickerHandler(result: result)
             }
             
+            let contactPicker = CNContactPickerViewController()
             contactPicker.delegate = _delegate
+            contactPicker.displayedPropertyKeys = [CNContactPhoneNumbersKey]
             
-            // Find proper keyWindow
+            // find proper keyWindow
             var keyWindow: UIWindow? = nil
             if #available(iOS 13, *) {
-                keyWindow = UIApplication.shared.connectedScenes
-                    .filter { $0.activationState == .foregroundActive }
-                    .compactMap { $0 as? UIWindowScene }
-                    .first?.windows
-                    .filter { $0.isKeyWindow }
-                    .first
+                keyWindow = UIApplication.shared.connectedScenes.filter {
+                    $0.activationState == .foregroundActive
+                }.compactMap { $0 as? UIWindowScene
+                }.first?.windows.filter({ $0.isKeyWindow}).first
             } else {
                 keyWindow = UIApplication.shared.keyWindow
             }
             
-            keyWindow?.rootViewController?.present(contactPicker, animated: true, completion: nil)
+            let viewController = keyWindow?.rootViewController
+            viewController?.present(contactPicker, animated: true, completion: nil)
         }
     } else {
         result(FlutterMethodNotImplemented)
@@ -57,7 +53,7 @@ public class FlutterNativeContactPickerPlugin: NSObject, FlutterPlugin {
 }
 
 class PickerHandler: NSObject, CNContactPickerDelegate {
-    var result: FlutterResult
+    var result: FlutterResult;
     
     required init(result: @escaping FlutterResult) {
         self.result = result
@@ -70,14 +66,25 @@ class PickerHandler: NSObject, CNContactPickerDelegate {
     }
 }
 
+class SinglePickerHandler: PickerHandler {
+    @available(iOS 9.0, *)
+    public func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
+        var data = Dictionary<String, Any>()
+        data["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
+        let numbers: Array<String> = contact.phoneNumbers.compactMap { $0.value.stringValue as String }
+        data["phoneNumbers"] = numbers
+        result(data)
+    }
+}
+
 class MultiPickerHandler: PickerHandler {
     @available(iOS 9.0, *)
     public func contactPicker(_ picker: CNContactPickerViewController, didSelect contacts: [CNContact]) {
-        var selectedContacts = [[String: Any]]()
+        var selectedContacts = [Dictionary<String, Any>]()
         for contact in contacts {
-            var contactInfo = [String: Any]()
-            contactInfo["fullName"] = CNContactFormatter.string(from: contact, style: .fullName)
-            let numbers = contact.phoneNumbers.compactMap { $0.value.stringValue }
+            var contactInfo = Dictionary<String, Any>()
+            contactInfo["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
+            let numbers: [String] = contact.phoneNumbers.compactMap { $0.value.stringValue as String }
             contactInfo["phoneNumbers"] = numbers
             selectedContacts.append(contactInfo)
         }
@@ -88,27 +95,15 @@ class MultiPickerHandler: PickerHandler {
 class PhoneNumberPickerHandler: PickerHandler {
     @available(iOS 9.0, *)
     public func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
-        guard contactProperty.key == CNContactPhoneNumbersKey,
-              let phoneNumber = contactProperty.value as? CNPhoneNumber else {
-            result(FlutterError(code: "invalid_selection", message: "Selected property is not a phone number", details: nil))
-            return
+        if contactProperty.key == CNContactPhoneNumbersKey,
+           let phoneNumberValue = contactProperty.value as? CNPhoneNumber {
+            let contact = contactProperty.contact
+            var data = Dictionary<String, Any>()
+            data["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
+            data["selectedPhoneNumber"] = phoneNumberValue.stringValue
+            data["phoneNumbers"] = contact.phoneNumbers.compactMap { $0.value.stringValue as String }
+            result(data)
         }
-        
-        guard let contact = contactProperty.contact as? CNContact else {
-            result(FlutterError(code: "invalid_contact", message: "Failed to retrieve contact", details: nil))
-            return
-        }
-        
-        let fullName = CNContactFormatter.string(from: contact, style: .fullName)
-        let allNumbers = contact.phoneNumbers.compactMap { $0.value.stringValue }
-        let selectedNumber = phoneNumber.stringValue
-        
-        let resultData: [String: Any] = [
-            "fullName": fullName ?? "",
-            "selectedPhoneNumber": selectedNumber,
-            "phoneNumbers": allNumbers
-        ]
-        
-        result(resultData)
     }
 }
+
