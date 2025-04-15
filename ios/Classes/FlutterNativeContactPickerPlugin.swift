@@ -94,7 +94,10 @@ class PhoneNumberPickerHandler: PickerHandler {
             return
         }
         
-        let contact = contactProperty.contact
+        guard let contact = contactProperty.contact as? CNContact else {
+            result(FlutterError(code: "invalid_contact", message: "Failed to retrieve contact", details: nil))
+            return
+        }
         
         let fullName = CNContactFormatter.string(from: contact, style: .fullName)
         let allNumbers = contact.phoneNumbers.compactMap { $0.value.stringValue }
